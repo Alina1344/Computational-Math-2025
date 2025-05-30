@@ -1,0 +1,300 @@
+import math
+
+# Определение подынтегральных функций
+def f1(x):
+    return 4*x**3 - 3*x**2 + 5*x - 20
+
+def f2(x):
+    return x**3 - 3*x**2 + 6*x - 19
+
+def f3(x):
+    return -2*x**3 - 4*x**2 + 8*x - 4
+
+def f4(x):
+    return 3*x**3 + 5*x**2 + 3*x - 6
+
+def f5(x):  # Особенность в x = 0
+    return 1 / math.sqrt(x)
+
+def f6(x):  # Особенность в x = 1
+    return 1 / (1 - x)
+
+def f7(x):  # Особенность в x = 0
+    return 1 / x
+
+# Красивые описания функций для вывода
+function_descriptions = {
+    f1: "4x³ - 3x² + 5x - 20",
+    f2: "x³ - 3x² + 6x - 19",
+    f3: "-2x³ - 4x² + 8x - 4",
+    f4: "3x³ + 5x² + 3x - 6",
+    f5: "1/√x (особенность в x=0)",
+    f6: "1/(1-x) (особенность в x=1)",
+    f7: "1/x (особенность в x=0)"
+}
+
+# Методы численного интегрирования
+def rectangle_left(f, a, b, n):
+    h = (b - a) / n
+    integral = 0
+    for i in range(n):
+        integral += f(a + i * h)
+    return integral * h
+
+def rectangle_right(f, a, b, n):
+    h = (b - a) / n
+    integral = 0
+    for i in range(1, n+1):
+        integral += f(a + i * h)
+    return integral * h
+
+def rectangle_mid(f, a, b, n):
+    h = (b - a) / n
+    integral = 0
+    for i in range(n):
+        integral += f(a + (i + 0.5) * h)
+    return integral * h
+
+def trapezoid(f, a, b, n):
+    h = (b - a) / n
+    integral = 0.5 * (f(a) + f(b))
+    for i in range(1, n):
+        integral += f(a + i * h)
+    return integral * h
+
+def simpson(f, a, b, n):
+    h = (b - a) / n
+    integral = f(a) + f(b)
+    for i in range(1, n):
+        if i % 2 == 0:
+            integral += 2 * f(a + i * h)
+        else:
+            integral += 4 * f(a + i * h)
+    return integral * h / 3
+
+# Правило Рунге для оценки погрешности
+def runge_rule(f, a, b, method, eps):
+    n = 4
+    integral_n = method(f, a, b, n)
+    integral_2n = method(f, a, b, 2 * n)
+
+    # Определяем порядок точности метода
+    if method.__name__ == 'simpson':
+        p = 4  # Метод Симпсона имеет 4-й порядок точности
+    else:
+        p = 2  # Остальные методы имеют 2-й порядок точности
+
+    while abs(integral_2n - integral_n) / (2 ** p - 1) > eps:
+        n *= 2
+        integral_n = integral_2n
+        integral_2n = method(f, a, b, 2 * n)
+
+    return integral_2n, 2 * n
+# Проверка на чётность/нечётность функции
+def is_even_function(f, tol=1e-6):
+    test_points = [1e-3, 1e-2, 0.5, 1.0]
+    for x in test_points:
+        try:
+            if not math.isclose(f(x), f(-x), rel_tol=tol):
+                return False
+        except:
+            return False
+    return True
+
+def is_odd_function(f, tol=1e-6):
+    test_points = [1e-3, 1e-2, 0.5, 1.0]
+    for x in test_points:
+        try:
+            if not math.isclose(f(x), -f(-x), rel_tol=tol):
+                return False
+        except:
+            return False
+    return True
+
+# Поиск особенностей функции
+def find_singularities(f, a, b, num_samples=1000):
+    eps = 1e-6
+    points = []
+
+    # Проверка границ
+    for x in [a, b]:
+        try:
+            y = f(x)
+            if not math.isfinite(y):
+                points.append(x)
+        except:
+            points.append(x)
+
+    # Проверка внутренних точек
+    for i in range(1, num_samples):
+        x = a + (b - a) * i / num_samples
+        try:
+            y = f(x)
+            if not math.isfinite(y):
+                points.append(x)
+        except:
+            points.append(x)
+
+    return sorted({round(p, 6) for p in points if a - eps <= p <= b + eps})
+
+# Численная проверка сходимости
+def check_convergence(f, a, b, singularity, eps=1e-12):
+    try:
+        if singularity == a:
+            # Для левой границы проверяем поведение при eps → 0
+            eps_list = [eps * 10 ** (-i) for i in range(4)]  # [1e-12, 1e-13, 1e-14, 1e-15]
+            integrals = []
+
+            for e in eps_list:
+                integral, _ = runge_rule(f, a + e, b, simpson, e / 100)
+                integrals.append(integral)
+
+                # Дополнительная проверка на слишком быстрый рост
+                if len(integrals) > 1 and integrals[-1] > 1e10 * integrals[0]:
+                    return False
+
+            # Анализ поведения интегралов
+            if len(integrals) < 2:
+                return math.isfinite(integrals[0])
+
+            # Проверяем стабилизацию значений
+            rel_diff = max(abs((integrals[i] - integrals[i + 1]) / integrals[i + 1])
+                           for i in range(len(integrals) - 1))
+
+            return rel_diff < 0.1 and math.isfinite(integrals[-1])
+
+        elif singularity == b:
+            # Аналогичная проверка для правой границы
+            eps_list = [eps * 10 ** (-i) for i in range(4)]
+            integrals = []
+
+            for e in eps_list:
+                integral, _ = runge_rule(f, a, b - e, simpson, e / 100)
+                integrals.append(integral)
+
+                if len(integrals) > 1 and integrals[-1] > 1e10 * integrals[0]:
+                    return False
+
+            if len(integrals) < 2:
+                return math.isfinite(integrals[0])
+
+            rel_diff = max(abs((integrals[i] - integrals[i + 1]) / integrals[i + 1])
+                           for i in range(len(integrals) - 1))
+
+            return rel_diff < 0.1 and math.isfinite(integrals[-1])
+
+        else:
+            # Проверка для внутренних особенностей
+            part1, _ = runge_rule(f, a, singularity - eps, simpson, eps / 2)
+            part2, _ = runge_rule(f, singularity + eps, b, simpson, eps / 2)
+            return math.isfinite(part1 + part2)
+
+    except:
+        return False
+
+# Основная программа с добавленной проверкой симметрии
+def main():
+    functions = [f1, f2, f3, f4, f5, f6, f7]
+    methods = {
+        '1': ('Прямоугольники (левые)', rectangle_left),
+        '2': ('Прямоугольники (правые)', rectangle_right),
+        '3': ('Прямоугольники (средние)', rectangle_mid),
+        '4': ('Трапеции', trapezoid),
+        '5': ('Симпсон', simpson)
+    }
+
+    print("\nДоступные функции:")
+    for i, f in enumerate(functions, 1):
+        print(f"{i}. {function_descriptions[f]}")
+
+    # Выбор функции
+    func_idx = int(input("\nВыберите функцию (1-7): ")) - 1
+    func = functions[func_idx]
+    func_desc = function_descriptions[func]
+
+    # Ввод параметров
+    a = float(input("Нижний предел: "))
+    b = float(input("Верхний предел: "))
+    eps = float(input("Точность: "))
+
+    # Проверка симметрии интервала и свойств функции
+    symmetric_interval = math.isclose(a, -b, rel_tol=1e-9)
+    is_odd = is_odd_function(func)
+    is_even = is_even_function(func)
+
+    if symmetric_interval:
+        if is_odd:
+            print("\nФункция нечётная, интервал симметричный. Интеграл равен 0.")
+            return
+        elif is_even:
+            print("\nФункция чётная, интегрируем от 0 до", abs(b), "и умножаем на 2.")
+            a_orig, b_orig = a, b
+            a, b = 0, abs(b)
+            need_to_double = True
+        else:
+            need_to_double = False
+    else:
+        need_to_double = False
+
+    # Поиск особенностей
+    singularities = find_singularities(func, a, b)
+    # Вычисление интеграла (разбиваем интервал на части)
+    total = 0
+    total_n = 0
+    prev_point = a
+
+    if singularities:
+        for s in singularities:
+            if check_convergence(func, a, b, s, eps):
+                print(f"Интеграл сходится")
+            else:
+                print(f"Интеграл расходится")
+                print("Интеграл не существует")
+                return
+
+        # Выбор метода
+        print("\nМетоды интегрирования:")
+        for k, (name, _) in methods.items():
+            print(f"{k}. {name}")
+        method = methods[input("Выберите метод (1-5): ")][1]
+
+
+        for s in singularities:
+            if s > prev_point + eps:
+                integral, n = runge_rule(func, prev_point, s - eps, method, eps / len(singularities))
+                total += integral
+                total_n += n
+            prev_point = s + eps
+
+        if prev_point < b - eps:
+            integral, n = runge_rule(func, prev_point, b, method, eps / len(singularities))
+            total += integral
+            total_n += n
+
+        # После вычисления интеграла
+        if need_to_double:
+            total *= 2
+            print("\nРезультат с учётом симметрии:")
+        else:
+            print("\nРезультат:")
+
+        print(f"Значение интеграла: {total:.8f}")
+        print(f"Число разбиений: {total_n}")
+    else:
+        # Обычное вычисление
+        print("\nМетоды интегрирования:")
+        for k, (name, _) in methods.items():
+            print(f"{k}. {name}")
+        method = methods[input("Выберите метод (1-5): ")][1]
+        integral, n = runge_rule(func, a, b, method, eps)
+        # После вычисления интеграла
+        if need_to_double:
+            total *= 2
+            print("\nРезультат с учётом симметрии:")
+        else:
+            print("\nРезультат:")
+        print(f"Значение интеграла: {integral:.8f}")
+        print(f"Число разбиений: {n}")
+
+if __name__ == "__main__":
+    main()
