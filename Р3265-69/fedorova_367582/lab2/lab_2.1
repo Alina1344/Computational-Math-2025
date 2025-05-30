@@ -1,0 +1,191 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Определение функций
+def f1(x):
+   return -2.8 * x ** 3 - 3.48 * x ** 2 + 10.23 * x + 9.35
+
+def f2(x):
+   return 2 * x ** 3 - 1.89 * x ** 2 - 5 * x + 2.34
+
+def f3(x):
+   return -1.38 * x ** 3 - 5.42 * x ** 2 + 2.57 * x + 10.95
+
+def f4(x):
+   return 1.8 * x ** 3 - 2.47 * x ** 2 - 5.53 * x + 1.539
+
+
+# Производные функций (для метода простой итерации)
+def df1(x):
+   return -2.8 * 3 * x ** 2 - 3.48 * 2 * x + 10.23
+
+def df2(x):
+   return 2 * 3 * x ** 2 - 1.89 * 2 * x - 5
+
+def df3(x):
+   return -1.38 * 3 * x ** 2 - 5.42 * 2 * x + 2.57
+
+def df4(x):
+   return 1.8 * 3 * x ** 2 - 2.47 * 2 * x - 5.53
+
+
+# Описания функций
+function_descriptions = [
+   "f1(x) = -2.8x^3 - 3.48x^2 + 10.23x + 9.35",
+   "f2(x) = 2x^3 - 1.89x^2 - 5x + 2.34",
+   "f3(x) = -1.38x^3 - 5.42x^2 + 2.57x + 10.95",
+   "f4(x) = 1.8x^3 - 2.47x^2 - 5.53x + 1.539"]
+
+# Методы нахождения корней
+def chord_method(f, a, b, tol, max_iter=100):
+   for i in range(max_iter):
+       c = (a * f(b) - b * f(a)) / (f(b) - f(a))
+       if abs(f(c)) < tol:
+           return c, i + 1
+       if f(a) * f(c) < 0:
+           b = c
+       else:
+           a = c
+   print("Метод хорд не сошелся за максимальное число итераций.")
+   return None, max_iter
+
+
+def secant_method(f, a, b, tol, max_iter=100):
+   for i in range(max_iter):
+       c = b - f(b) * (b - a) / (f(b) - f(a))
+       if abs(f(c)) < tol:
+           return c, i + 1
+       a, b = b, c
+   print("Метод секущих не сошелся за максимальное число итераций.")
+   return None, max_iter
+
+
+def simple_iteration_method(f, f_prime, a, b, tol, max_iter=100):
+    """Метод простой итерации"""
+
+    # Проверка постоянства знака производной f' на интервале
+    line = np.linspace(a, b, 100)
+    derivatives = [f_prime(x) for x in line]
+    signs = np.sign(derivatives)
+
+    # Определение параметра λ
+    max_abs_deriv = max(abs(f_prime(x)) for x in line)
+    sign = signs[0]
+
+    # Выбор λ в зависимости от знака производной
+    if max_abs_deriv == 0:
+        print("Производная нулевая на интервале.")
+        return None, None
+
+    if sign > 0:
+        lambda_opt = -1 / max_abs_deriv
+    else:
+        lambda_opt = 1 / max_abs_deriv
+
+    # Определение функции phi(x) = x + λ*f(x)
+    def phi(x):
+        return x + lambda_opt * f(x)
+
+    # Проверка условия сходимости |phi'(x)| < 1
+    phi_derivs = [abs(1 + lambda_opt * f_prime(x)) for x in line]
+    max_phi_deriv = max(phi_derivs)
+
+    if max_phi_deriv >= 1:
+        print(f"Условие сходимости нарушено: max|φ'(x)|={max_phi_deriv:.4f} ≥ 1")
+        return None, None
+
+    # Итерационный процесс
+    x0 = (a + b) / 2  # Начальное приближение
+    for i in range(max_iter):
+        x1 = phi(x0)
+        if abs(x1 - x0) < tol:
+            return x1, i + 1
+        x0 = x1
+
+    print("Метод не сошелся за указанное число итераций.")
+    return None, None
+
+
+# Вспомогательные функции
+def has_root(f, a, b):
+    return f(a) * f(b) < 0
+
+def is_monotonic(f_prime, a, b):
+    line = np.linspace(a, b, 100)
+    signs = np.sign([f_prime(x) for x in line])
+    return np.all(signs == signs[0])
+
+def main():
+    functions = [f1, f2, f3, f4]
+    derivatives = [df1, df2, df3, df4]
+
+    print("Выберите функцию (1-4):")
+    for i, desc in enumerate(function_descriptions, 1):
+        print(f"{i}) {desc}")
+    choice = int(input()) - 1
+    f = functions[choice]
+    f_prime = derivatives[choice]
+
+    # Ввод данных
+    input_type = input("Ввод данных с клавиатуры (k) или из файла (f)? ")
+    if input_type == 'k':
+        a = float(input("Введите левую границу интервала: "))
+        b = float(input("Введите правую границу интервала: "))
+        tol = float(input("Введите точность: "))
+    elif input_type == 'f':
+        with open("input.txt", "r") as file:
+            a, b, tol = map(float, file.read().split())
+
+    # Проверка корректности данных
+    if a >= b:
+        print("Ошибка: левая граница должна быть меньше правой!")
+        return
+
+    # Проверка наличия корня и монотонности
+    if not has_root(f, a, b):
+        print("На интервале нет корня. Уточните интервал.")
+        return
+
+    if not is_monotonic(f_prime, a, b):
+        print("Функция не монотонна. Возможно несколько корней. Уточните интервал.")
+        return
+
+    print("Выберите метод (1-3):")
+    print("1) Метод хорд")
+    print("2) Метод секущих")
+    print("3) Метод простой итерации")
+    method_choice = int(input())
+
+    if method_choice == 1:
+        root, iterations = chord_method(f, a, b, tol)
+    elif method_choice == 2:
+        root, iterations = secant_method(f, a, b, tol)
+    elif method_choice == 3:
+        root, iterations = simple_iteration_method(f, f_prime, a, b, tol)
+
+    # Проверяем, сошелся ли метод
+    if root is None:
+        print("Попробуйте другой метод или уточните интервал.")
+        return
+
+    # Вывод результатов
+    output_type = input("Вывод результатов на экран (s) или в файл (f)? ")
+    result = f"Найденный корень: {root}\nЗначение функции в корне: {f(root)}\nЧисло итераций: {iterations}"
+
+    if output_type == 's':
+        print(result)
+    elif output_type == 'f':
+        with open("output.txt", "w", encoding="utf-8") as file:
+            file.write(result)
+
+    # Построение графика
+    x = np.linspace(a, b, 400)
+    y = f(x)
+    plt.plot(x, y)
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(root, color='red', linestyle='--', label=f'Root at x={root:.4f}')
+    plt.legend()
+    plt.show()
+
+if __name__ == "__main__":
+    main()
