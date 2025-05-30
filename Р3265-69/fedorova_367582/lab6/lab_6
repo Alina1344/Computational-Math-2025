@@ -1,0 +1,246 @@
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+from collections import defaultdict
+from tabulate import tabulate
+
+
+# Определение доступных дифференциальных уравнений
+equations = [
+    {
+        'name': "y' = y + (1 + x)y^2 ",
+        'order': 1, # Порядок уравнения
+        'f': lambda x, y: y + (1 + x) * y ** 2,  # Правая часть уравнения
+        'exact': lambda x, C: -1 / ((x + 1) * (C + math.log(x + 1))), # Точное решение
+        'C': lambda x0, y0: -1 / (y0[0] * (x0 + 1)) - math.log(x0 + 1) # Постоянная C
+    },
+    {
+        'name': "y'' = (2x y')/(x^2 + 1) ",
+        'order': 2,
+        'f': lambda x, y: [y[1], (2 * x * y[1]) / (x ** 2 + 1)],
+        'exact': lambda x: x ** 3 + 3 * x + 1,
+        'C': lambda x0, y0: None  # Точное решение фиксировано
+    },
+    {
+        'name': "y' = (x + y)^2 ",
+        'order': 1,
+        'f': lambda x, y: [(x + y[0]) ** 2],
+        'exact': lambda x, C: math.tan(x - C) - x,
+        'C': lambda x0, y0: x0 - math.atan(y0[0] + x0) if isinstance(y0, list) else x0 - math.atan(y0 + x0)
+    }
+]
+
+
+def euler_method(f, x0, y0, h, x_end):
+    x = x0  # Начальная точка
+    y = np.array(y0, dtype=float)  # Начальное значение y
+    xs, ys = [x], [y.copy()]  # Списки для хранения результатов
+
+    while x < x_end:
+        h_step = min(h, x_end - x)  # Корректировка шага в конце интервала
+        dy = f(x, y)  # Вычисление производной
+        y_next = y + h_step * np.array(dy)  # Формула Эйлера
+        x += h_step  # Переход к следующей точке
+        y = y_next  # Обновление y
+        xs.append(x)  # Сохранение x
+        ys.append(y.copy())  # Сохранение y
+
+    return xs, ys, []  # Возвращаем x, y и пустой список ошибок
+
+
+def improved_euler_method(f, x0, y0, h, x_end):
+    x = x0
+    y = np.array(y0, dtype=float)
+    xs, ys = [x], [y.copy()]
+    while x < x_end:
+        h_step = min(h, x_end - x)
+        # шаг Эйлера
+        k1 = np.array(f(x, y))
+        # используем значение в следующей точке
+        k2 = np.array(f(x + h_step, y + h_step * k1))
+        # усреднение
+        y_next = y + h_step * (k1 + k2) / 2
+        x += h_step
+        y = y_next
+        xs.append(x)
+        ys.append(y.copy())
+    return xs, ys, []
+
+
+def milne_method(f, x0, y0, h, x_end, exact, C=None):
+    # Начальные точки методом Рунге-Кутты 4-го порядка
+    x = x0
+    y = np.array(y0, dtype=float)
+    xs, ys = [x], [y.copy()]
+    steps = 3  # Для начала счета требуется задать решения в трех первых точках,
+               # которые можно получить одношаговыми методами
+    for _ in range(steps):
+        k1 = h * np.array(f(x, y))
+        k2 = h * np.array(f(x + h / 2, y + k1 / 2))
+        k3 = h * np.array(f(x + h / 2, y + k2 / 2))
+        k4 = h * np.array(f(x + h, y + k3))
+        y += (k1 + 2 * k2 + 2 * k3 + k4) / 6 # Формула Рунге-Кутты 4-го порядка
+        x += h
+        xs.append(x)
+        ys.append(y.copy())
+
+    # Метод Милна
+    while x < x_end - 1e-9:
+        h_step = min(h, x_end - x)
+        # Прогноз (используем 4 предыдущие точки)
+        fp = [f(xs[-4], ys[-4])[0],
+              f(xs[-3], ys[-3])[0],
+              f(xs[-2], ys[-2])[0],
+              f(xs[-1], ys[-1])[0]]
+        y_pred = ys[-4] + 4 * h_step / 3 * (2 * fp[1] - fp[2] + 2 * fp[3])
+        # Коррекция
+        fc = f(x + h_step, y_pred) # f(x_{n+1}, y_pred)
+        y_corr = ys[-2] + h_step / 3 * (fp[2] + 4 * fp[3] + fc[0])
+        y_next = y_corr
+        x += h_step
+        y = y_next
+        xs.append(x)
+        ys.append(y.copy())
+
+    # Вычисление ошибки относительно точного решения
+    errs = []
+    if exact:
+        for x_val, y_val in zip(xs, ys):
+            if C is not None:
+                exact_val = exact(x_val, C)
+            else:
+                exact_val = exact(x_val)
+            if isinstance(exact_val, (list, np.ndarray)):
+                err = max(abs(y_val[i] - exact_val[i]) for i in range(len(y_val)))
+            else:
+                err = abs(y_val[0] - exact_val)
+            errs.append(err)
+    return xs, ys, max(errs) if errs else 0.0
+
+
+def runge_rule(method, f, x0, y0, h, x_end, p):
+    xs_h, ys_h, _ = method(f, x0, y0, h, x_end)  # Решение с шагом h
+    xs_h2, ys_h2, _ = method(f, x0, y0, h / 2, x_end) # Решение с шагом h/2
+
+    min_len = min(len(xs_h), len(xs_h2[::2])) # Для сравнения в одних точках
+    errors = []
+
+    for i in range(min_len):
+        y1 = ys_h[i][0] # Значение с шагом h
+        y2 = ys_h2[2 * i][0]  # Значение с шагом h/2 (берем каждую вторую точку)
+        error = abs(y2 - y1) / (2 ** p - 1)  #Формула Рунге
+        errors.append(error)
+    return max(errors) # Максимальная оценка погрешности
+
+
+def main():
+    print("Выберите уравнение:")
+    for i, eq in enumerate(equations, 1):
+        print(f"{i}. {eq['name']}")
+    try:
+        idx = int(input("Номер уравнения: ")) - 1
+        if not 0 <= idx < len(equations):
+            raise ValueError
+    except ValueError:
+        print("Некорректный выбор.")
+        return
+
+    eq = equations[idx]
+    print(f"Выбрано уравнение: {eq['name']}")
+    # Ввод начальных условий
+    x0 = float(input("x0: "))
+    if eq['order'] == 1:
+        y0_input = float(input("y0: "))
+        y0 = [y0_input]
+    else:
+        y0_val = float(input("y(x0): "))
+        y_prime0 = float(input("y'(x0): "))
+        y0 = [y0_val, y_prime0]
+
+    x_end = float(input("x_n: "))
+    h = float(input("Шаг h: "))
+    eps = float(input("Точность eps: "))
+
+    # Проверка корректности
+    if h <= 0 or x_end <= x0 or eps <= 0:
+        print("Некорректные параметры.")
+        return
+
+    # Точное решение
+    exact_solution = eq.get('exact')
+    C = eq.get('C')(x0, y0) if 'C' in eq else None
+
+    # Решение методами
+    euler_x, euler_y, _ = euler_method(eq['f'], x0, y0, h, x_end)
+    impr_x, impr_y, _ = improved_euler_method(eq['f'], x0, y0, h, x_end)
+    milne_x, milne_y, milne_err = milne_method(eq['f'], x0, y0, h, x_end, exact_solution, C)
+
+    # Формирование таблицы
+    print("\nРезультаты:")
+    headers = ["x", "Euler", "Improved Euler", "Milne", "Exact"]
+    data = []
+
+    all_x = sorted(set(euler_x + impr_x + milne_x))
+    for x in all_x:
+        row = [f"{x:.4f}"]
+        # Euler
+        euler_val = next((y[0] for xi, y in zip(euler_x, euler_y) if abs(xi - x) < 1e-9), None)
+        row.append(f"{euler_val:.4f}" if euler_val is not None else "---")
+        # Improved Euler
+        impr_val = next((y[0] for xi, y in zip(impr_x, impr_y) if abs(xi - x) < 1e-9), None)
+        row.append(f"{impr_val:.4f}" if impr_val is not None else "---")
+        # Milne
+        milne_val = next((y[0] for xi, y in zip(milne_x, milne_y) if abs(xi - x) < 1e-9), None)
+        row.append(f"{milne_val:.4f}" if milne_val is not None else "---")
+        # Exact
+        if exact_solution:
+            try:
+                exact_val = exact_solution(x, C)
+            except TypeError:
+                exact_val = exact_solution(x)
+            if isinstance(exact_val, (list, np.ndarray)):
+                exact_val = exact_val[0]
+            row.append(f"{exact_val:.4f}")
+        else:
+            row.append("---")
+        data.append(row)
+
+    # Вывод таблицы
+    print(tabulate(data, headers=headers, tablefmt="simple"))
+
+    # Оценка точности
+    print(f"\nМаксимальная погрешность Милна: {milne_err:.6f}")
+
+    # Оценка по Рунге
+    euler_runge_err = runge_rule(euler_method, eq['f'], x0, y0, h, x_end, p=1)
+    impr_runge_err = runge_rule(improved_euler_method, eq['f'], x0, y0, h, x_end, p=2)
+
+    print(f"\nПогрешность Эйлера по правилу Рунге: {euler_runge_err:.6f}")
+    print(f"Погрешность улучшенного Эйлера по правилу Рунге: {impr_runge_err:.6f}")
+
+    # Графики
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(euler_x, [y[0] for y in euler_y], label='Euler', linestyle='--', marker='o')
+    plt.plot(impr_x, [y[0] for y in impr_y], label='Improved Euler', linestyle='-.', marker='s')
+    plt.plot(milne_x, [y[0] for y in milne_y], label='Milne', linestyle='-', marker='^')
+
+    # Точное решение (если есть)
+    if exact_solution:
+        x_vals = np.linspace(x0, x_end, 200)
+        y_exact = [exact_solution(x, C) if C is not None else exact_solution(x) for x in x_vals]
+        if isinstance(y_exact[0], (list, np.ndarray)):
+            y_exact = [y[0] for y in y_exact]
+        plt.plot(x_vals, y_exact, '--', label='Exact', color='black')
+
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.title("Сравнение численных методов решения ОДУ")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()
