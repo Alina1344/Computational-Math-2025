@@ -1,0 +1,128 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from math import sin, cos, sqrt
+
+
+# Определение систем уравнений и итерационных функций
+def system1_positive(x, y):
+    """Система 1: sin(x + y) - 1.1x = 0.1 и x² + y² = 1."""
+    return (sin(x + y) - 0.1) / 1.1, sqrt(1 - x ** 2)
+
+
+def system1_negative(x, y):
+    """Система 1: sin(x + y) - 1.1x = 0.1 и x² + y² = 1."""
+    return (sin(x + y) - 0.1) / 1.1, -sqrt(1 - x ** 2)
+
+
+def system2(x, y):
+    """Система 2: sin(y - 1) + x = 1.3 и y - sin(x + 1) = 0.8."""
+    return 1.3 - sin(y - 1), 0.8 + sin(x + 1)
+
+
+# Проверка условий сходимости через матрицу Якоби
+def jacobian_system1(x, y):
+    df1_dx = cos(x + y) / 1.1
+    df1_dy = cos(x + y) / 1.1
+    df2_dx = -x / sqrt(1 - x ** 2) if abs(x) < 1 else 0
+    return np.array([[df1_dx, df1_dy], [df2_dx, 0]])
+
+
+def jacobian_system2(x, y):
+    df1_dy = -cos(y - 1)
+    df2_dx = cos(x + 1)
+    return np.array([[0, df1_dy], [df2_dx, 0]])
+
+
+def check_convergence(jacobian_func, x0, y0):
+    J = jacobian_func(x0, y0)
+    row_sums = np.sum(np.abs(J), axis=1)
+    return np.max(row_sums) < 1
+
+
+# Метод простой итерации с записью погрешностей по каждому неизвестному
+def simple_iteration(system_func, x0, y0, eps):
+    max_iter = 100
+    x_prev, y_prev = x0, y0
+    errors_x, errors_y = [], []
+    for i in range(max_iter):
+        x_new, y_new = system_func(x_prev, y_prev)
+        errors_x.append(abs(x_new - x_prev))
+        errors_y.append(abs(y_new - y_prev))
+        if max(errors_x[-1], errors_y[-1]) < eps:
+            return (x_new, y_new), i + 1, (errors_x, errors_y)
+        x_prev, y_prev = x_new, y_new
+    raise ValueError("Метод не сошелся за максимальное число итераций.")
+
+
+# Визуализация системы
+def plot_system(system_num):
+    x = np.linspace(-2, 2, 100)
+    y = np.linspace(-2, 2, 100)
+    X, Y = np.meshgrid(x, y)
+
+    if system_num == 1:
+        F1 = np.sin(X + Y) - 1.1 * X - 0.1
+        F2 = X ** 2 + Y ** 2 - 1
+        title = "Система 1: sin(x+y)-1.1x=0.1 и x²+y²=1"
+    else:
+        F1 = np.sin(Y - 1) + X - 1.3
+        F2 = Y - np.sin(X + 1) - 0.8
+        title = "Система 2: sin(y-1)+x=1.3 и y-sin(x+1)=0.8"
+
+    plt.figure(figsize=(8, 6))
+    plt.contour(X, Y, F1, [0], colors='r', linewidths=2)
+    plt.contour(X, Y, F2, [0], colors='b', linewidths=2)
+    plt.title(title, fontsize=12, pad=20)
+    plt.xlabel('x', fontsize=10)
+    plt.ylabel('y', fontsize=10)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.show()
+
+
+# Основная программа
+if __name__ == "__main__":
+    print("Доступные системы уравнений:")
+    print("1) sin(x + y) - 1.1x = 0.1\n   x² + y² = 1")
+    print("2) sin(y - 1) + x = 1.3\n   y - sin(x + 1) = 0.8")
+
+    system = int(input("Выберите систему (1 или 2): "))
+    x0 = float(input("Введите начальное приближение x₀: "))
+    y0 = float(input("Введите начальное приближение y₀: "))
+    eps = float(input("Введите точность ε (например, 0.001): "))
+
+    # Выбор функции system1 в зависимости от x0
+    if system == 1:
+        if x0 < 0:
+            system_func = system1_negative
+        else:
+            system_func = system1_positive
+    else:
+        system_func = system2
+
+    jacobian_func = jacobian_system1 if system == 1 else jacobian_system2
+
+    if check_convergence(jacobian_func, x0, y0):
+        try:
+            (x, y), iterations, (errors_x, errors_y) = simple_iteration(system_func, x0, y0, eps)
+            print("\n" + "=" * 40)
+            print(f"Результаты для системы {system}:")
+            print(f"Вектор неизвестных: x₁ = {x:.6f}, y₁ = {y:.6f}")
+            print(f"Количество итераций: {iterations}")
+            print(f"Погрешности на последней итерации: Δx = {errors_x[-1]:.6f}, Δy = {errors_y[-1]:.6f}")
+            print("=" * 40)
+
+            # Проверка решения
+            if system == 1:
+                f1 = sin(x + y) - 1.1 * x - 0.1
+                f2 = x ** 2 + y ** 2 - 1
+            else:
+                f1 = sin(y - 1) + x - 1.3
+                f2 = y - sin(x + 1) - 0.8
+            print(f"\nПроверка:\nF₁(x, y) = {f1:.6f}\nF₂(x, y) = {f2:.6f}")
+
+        except ValueError as e:
+            print(e)
+    else:
+        print("Условие сходимости не выполняется! Попробуйте другие начальные приближения.")
+
+    plot_system(system)
