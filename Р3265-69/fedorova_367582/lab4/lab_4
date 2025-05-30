@@ -1,0 +1,390 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import pearsonr
+
+
+# Пользовательские исключения
+class DataValidationError(Exception):
+    """Базовое исключение для ошибок валидации данных"""
+    pass
+
+
+class InvalidChoiceError(DataValidationError):
+    pass
+
+
+class FileReadError(DataValidationError):
+    pass
+
+
+class InvalidDataFormatError(DataValidationError):
+    pass
+
+
+class DataSizeError(DataValidationError):
+    pass
+
+
+class InvalidInputError(DataValidationError):
+    pass
+
+
+def validate_data_size(data):
+    """Проверка количества точек"""
+    if len(data) < 8 or len(data) > 12:
+        raise DataSizeError("Количество точек должно быть от 8 до 12")
+
+
+def validate_numeric_input(value, name):
+    """Проверка числового ввода"""
+    try:
+        return float(value.replace(',', '.'))
+    except ValueError:
+        raise InvalidInputError(f"Некорректное значение {name}: {value}")
+
+
+def read_data():
+    """Чтение данных с обработкой исключений"""
+    print("Введите данные:")
+    print("1. Ввод из файла")
+    print("2. Ввод из консоли")
+
+    choice = input("Выберите опцию (1 или 2): ")
+
+    try:
+        if choice == '1':
+            return read_from_file()
+        elif choice == '2':
+            return read_from_console()
+        else:
+            raise InvalidChoiceError("Неверный выбор. Введите 1 или 2")
+    except DataValidationError as e:
+        raise  # Передаем выше для обработки в main()
+    except Exception as e:
+        raise FileReadError(f"Ошибка при чтении данных: {str(e)}")
+
+
+def read_from_file():
+    """Чтение данных из файла"""
+    filename = input("Введите имя файла: ")
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+    except IOError:
+        raise FileReadError(f"Ошибка открытия файла: {filename}")
+
+    data = []
+    for i, line in enumerate(lines, 1):
+        line = line.strip()
+        if line:
+            # Заменяем все запятые на точки перед разбиением
+            line = line.replace(',', '.')
+            parts = line.split()
+            if len(parts) < 2:
+                raise InvalidDataFormatError(
+                    f"Строка {i}: требуется 2 значения, получено {len(parts)}")
+
+            try:
+                x = float(parts[0])
+                y = float(parts[1])
+                data.append((x, y))
+            except ValueError as e:
+                raise InvalidDataFormatError(
+                    f"Строка {i}: неверный формат числа - {str(e)}")
+
+    validate_data_size(data)
+    return np.array([d[0] for d in data]), np.array([d[1] for d in data])
+
+def read_from_console():
+    """Чтение данных из консоли"""
+    try:
+        n = int(input("Введите количество точек (от 8 до 12): "))
+    except ValueError:
+        raise InvalidInputError("Количество точек должно быть целым числом")
+
+    validate_data_size(range(n))  # Проверяем диапазон
+
+    x, y = [], []
+    for i in range(n):
+        try:
+            xi = validate_numeric_input(input(f"x[{i}]: "), f"x[{i}]")
+            yi = validate_numeric_input(input(f"y[{i}]: "), f"y[{i}]")
+            x.append(xi)
+            y.append(yi)
+        except InvalidInputError as e:
+            raise InvalidDataFormatError(str(e))
+
+    return np.array(x), np.array(y)
+
+def fit_models(x, y):
+    models = {}
+    # Линейная модель
+    try:
+        coeffs = np.polyfit(x, y, 1)
+        a, b = coeffs
+        models['linear'] = {
+            'coeffs': {'a': a, 'b': b},
+            'func': lambda x, a=a, b=b: a * x + b,
+            'valid': True,
+            'pearson_r': pearsonr(x, y)[0],
+            'R2': None,
+            'S': None,
+            'RMSE': None,
+            'phi': None,
+            'eps': None
+        }
+    except Exception as e:
+        models['linear'] = {'valid': False}
+
+    # Квадратичная модель
+    try:
+        coeffs = np.polyfit(x, y, 2)
+        a, b, c = coeffs
+        models['quadratic'] = {
+            'coeffs': {'a': a, 'b': b, 'c': c},
+            'func': lambda x, a=a, b=b, c=c: a * x ** 2 + b * x + c,
+            'valid': True,
+            'R2': None,
+            'S': None,
+            'RMSE': None,
+            'phi': None,
+            'eps': None
+        }
+    except:
+        models['quadratic'] = {'valid': False}
+
+    # Кубическая модель
+    try:
+        coeffs = np.polyfit(x, y, 3)
+        a, b, c, d = coeffs
+        models['cubic'] = {
+            'coeffs': {'a': a, 'b': b, 'c': c, 'd': d},
+            'func': lambda x, a=a, b=b, c=c, d=d: a * x ** 3 + b * x ** 2 + c * x + d,
+            'valid': True,
+            'R2': None,
+            'S': None,
+            'RMSE': None,
+            'phi': None,
+            'eps': None
+        }
+    except:
+        models['cubic'] = {'valid': False}
+
+    # Экспоненциальная модель y = a*exp(bx)
+    valid_exp = np.all(y > 0)
+    if valid_exp:
+        try:
+            y_log = np.log(y)
+            coeffs = np.polyfit(x, y_log, 1)
+            b, ln_a = coeffs[0], coeffs[1]
+            a = np.exp(ln_a)
+            models['exponential'] = {
+                'coeffs': {'a': a, 'b': b},
+                'func': lambda x, a=a, b=b: a * np.exp(b * x),
+                'valid': True,
+                'R2': None,
+                'S': None,
+                'RMSE': None,
+                'phi': None,
+                'eps': None
+            }
+        except:
+            models['exponential'] = {'valid': False}
+    else:
+        models['exponential'] = {'valid': False}
+
+    # Логарифмическая модель y = a + b*ln(x)
+    valid_log = np.all(x > 0)
+    if valid_log:
+        try:
+            x_log = np.log(x)
+            coeffs = np.polyfit(x_log, y, 1)
+            b, a = coeffs[0], coeffs[1]
+            models['logarithmic'] = {
+                'coeffs': {'a': a, 'b': b},
+                'func': lambda x, a=a, b=b: a + b * np.log(x),
+                'valid': True,
+                'R2': None,
+                'S': None,
+                'RMSE': None,
+                'phi': None,
+                'eps': None
+            }
+        except:
+            models['logarithmic'] = {'valid': False}
+    else:
+        models['logarithmic'] = {'valid': False}
+
+    # Степенная модель y = a*x^b
+    valid_power = np.all(x > 0) and np.all(y > 0)
+    if valid_power:
+        try:
+            x_log = np.log(x)
+            y_log = np.log(y)
+            coeffs = np.polyfit(x_log, y_log, 1)
+            b, ln_a = coeffs[0], coeffs[1]
+            a = np.exp(ln_a)
+            models['power'] = {
+                'coeffs': {'a': a, 'b': b},
+                'func': lambda x, a=a, b=b: a * (x ** b),
+                'valid': True,
+                'R2': None,
+                'S': None,
+                'RMSE': None,
+                'phi': None,
+                'eps': None
+            }
+        except:
+            models['power'] = {'valid': False}
+    else:
+        models['power'] = {'valid': False}
+
+    # Рассчет метрик для валидных моделей
+    y_mean = np.mean(y)  # среднее арифметическое для знаменателя коэфф. детерминации
+    TSS = np.sum((y - y_mean) ** 2) if len(y) > 0 else 0
+
+    for model_name in models:
+        model = models[model_name]
+        if model.get('valid', False):
+            phi = model['func'](x)
+            eps = phi - y
+            S = np.sum(eps ** 2) #мера отклонения (кртиерий минимизаци)
+            RMSE = np.sqrt(S / len(x)) if len(x) > 0 else 0  # среднеквадратичное отклоенение
+            R2 = 1 - S / TSS if TSS != 0 else 0  # достоверность аппроксимации (коэффициент детерминации)
+
+            model['phi'] = phi
+            model['eps'] = eps
+            model['S'] = S
+            model['RMSE'] = RMSE
+            model['R2'] = R2
+
+    return models
+
+def print_results(models, x, y, output_file=None):
+    # Определяем, куда выводить (в файл или консоль)
+    if output_file:
+        f = open(output_file, 'w', encoding='utf-8')
+        print_to_console = False
+    else:
+        f = None
+        print_to_console = True
+
+    def print_line(text):
+
+        if print_to_console:
+            print(text)
+        if f:
+            f.write(text + '\n')
+
+    # --- Добавлен блок предупреждений о положительных данных ---
+    if 'exponential' in models and not models['exponential'].get('valid', False):
+        print_line("⚠ Экспоненциальная модель: требует y > 0 для всех точек")
+    if 'logarithmic' in models and not models['logarithmic'].get('valid', False):
+        print_line("⚠ Логарифмическая модель: требует x > 0 для всех точек")
+    if 'power' in models and not models['power'].get('valid', False):
+        print_line("⚠ Степенная модель: требует x > 0 и y > 0 для всех точек")
+    # ----------------------------------------------------------------
+
+    best_model = None
+    min_rmse = float('inf')
+
+    for model_name in models:
+        model = models[model_name]
+        if model.get('valid', False):
+            print_line(f"\n=== {model_name.capitalize()} модель ===")
+            print_line("Коэффициенты:")
+            for coeff, value in model['coeffs'].items():
+                print_line(f"{coeff}: {value:.4f}")
+            print_line(f"S (сумма квадратов отклонений): {model['S']:.4f}")
+            print_line(f"Среднеквадратичное отклонение (RMSE): {model['RMSE']:.4f}")
+            print_line(f"Коэффициент детерминации R²: {model['R2']:.4f}")  # Теперь символ ² запишется корректно
+            if model_name == 'linear':
+                print_line(f"Коэффициент корреляции Пирсона: {model.get('pearson_r', 0):.4f}")
+
+            # Сообщение по R²
+            r2 = model['R2']
+            if r2 >= 0.9:
+                print_line("R² >= 0.9: Очень высокая точность аппроксимации")
+            elif r2 >= 0.7:
+                print_line("0.7 <= R² < 0.9: Высокая точность аппроксимации")
+            elif r2 >= 0.5:
+                print_line("0.5 <= R² < 0.7: Умеренная точность")
+            else:
+                print_line("R² < 0.5: Низкая точность")
+
+            # Обновление лучшей модели
+            if model['RMSE'] < min_rmse:
+                min_rmse = model['RMSE']
+                best_model = model_name
+
+            # Вывод таблицы значений
+            print_line("\nТаблица значений:")
+            print_line("x_i\t| y_i\t| phi(x_i)\t| eps_i")
+            for xi, yi, phii, epsi in zip(x, y, model['phi'], model['eps']):
+                print_line(f"{xi:.2f}\t| {yi:.2f}\t| {phii:.4f}\t| {epsi:.4f}")
+
+    if best_model:
+        print_line(f"\nНаилучшая аппроксимирующая функция: {best_model} с RMSE {min_rmse:.4f}")
+    else:
+        print_line("\nНет валидных моделей для сравнения.")
+
+    if f:
+        f.close()
+
+def plot_models(x, y, models):
+    plt.figure(figsize=(12, 8))
+    plt.scatter(x, y, color='black', label='Исходные данные')
+    x_min = np.min(x)
+    x_max = np.max(x)
+    margin = 0.1 * (x_max - x_min) if x_max != x_min else 1
+    x_plot = np.linspace(x_min - margin, x_max + margin, 500)
+
+    for model_name in models:
+        model = models[model_name]
+        if model.get('valid', False):
+            try:
+                if model_name in ['logarithmic', 'power']:
+                    x_plot_model = x_plot[x_plot > 0]
+                    if len(x_plot_model) == 0:
+                        continue
+                    y_plot_model = model['func'](x_plot_model)
+                    plt.plot(x_plot_model, y_plot_model, label=model_name)
+                else:
+                    y_plot_model = model['func'](x_plot)
+                    plt.plot(x_plot, y_plot_model, label=model_name)
+            except:
+                continue
+
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.title('Графики аппроксимирующих функций')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def main():
+    try:
+        x, y = read_data()
+        models = fit_models(x, y)
+
+        print("\nРезультаты аппроксимации:")
+        print_results(models, x, y)
+
+        plot_models(x, y, models)
+
+        save_to_file = input("\nСохранить результаты в файл? (y/n): ").strip().lower()
+        if save_to_file == 'y':
+            filename = input("Введите имя файла: ")
+            print_results(models, x, y, filename)
+            print(f"Результаты сохранены в {filename}")
+
+    except DataValidationError as e:
+        print(f"\nОшибка ввода данных: {e}")
+    except Exception as e:
+        print(f"\nНеожиданная ошибка: {e}")
+    finally:
+        input("\nНажмите Enter для выхода...")
+
+
+if __name__ == "__main__":
+    main()
